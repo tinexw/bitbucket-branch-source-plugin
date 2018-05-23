@@ -38,6 +38,7 @@ import hudson.scm.SCM;
 import hudson.scm.SCMRevisionState;
 import java.io.File;
 import java.io.IOException;
+import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import jenkins.model.JenkinsLocationConfiguration;
 import jenkins.plugins.git.AbstractGitSCMSource;
@@ -54,8 +55,10 @@ import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
  */
 public class BitbucketBuildStatusNotifications {
 
+    private static final Logger LOGGER = Logger.getLogger(BitbucketBuildStatusNotifications.class.getName());
+
     private static void createStatus(@NonNull Run<?, ?> build, @NonNull TaskListener listener,
-                                     @NonNull BitbucketApi bitbucket, @NonNull String hash)
+            @NonNull BitbucketApi bitbucket, @NonNull String hash)
             throws IOException, InterruptedException {
         JenkinsLocationConfiguration cfg = JenkinsLocationConfiguration.get();
         if (cfg == null || cfg.getUrl() == null) {
@@ -77,6 +80,7 @@ public class BitbucketBuildStatusNotifications {
         String name = build.getFullDisplayName(); // use the build number as the display name of the status
         BitbucketBuildStatus status;
         Result result = build.getResult();
+        LOGGER.info("Creating status for key '" + key + "' and build result '" + result + "'.");
         if (Result.SUCCESS.equals(result)) {
             status = new BitbucketBuildStatus(hash, "This commit looks good", "SUCCESSFUL", url, key, name);
         } else if (Result.UNSTABLE.equals(result)) {
@@ -106,11 +110,13 @@ public class BitbucketBuildStatusNotifications {
         if (new BitbucketSCMSourceContext(null, SCMHeadObserver.none())
                 .withTraits(source.getTraits())
                 .notificationsDisabled()) {
+            listener.getLogger().println("[Bitbucket] Commit status notifications are disabled in traits.");
             return;
         }
         SCMRevision r = SCMRevisionAction.getRevision(build);  // TODO JENKINS-44648 getRevision(s, build)
         String hash = getHash(r);
         if (hash == null) {
+            listener.getLogger().println("[Bitbucket] Not notifying build result - cannot get hash.");
             return;
         }
         if (r instanceof PullRequestSCMRevision) {
@@ -145,7 +151,7 @@ public class BitbucketBuildStatusNotifications {
 
         @Override
         public void onCheckout(Run<?, ?> build, SCM scm, FilePath workspace, TaskListener listener, File changelogFile,
-                               SCMRevisionState pollingBaseline) throws Exception {
+                SCMRevisionState pollingBaseline) throws Exception {
             try {
                 sendNotifications(build, listener);
             } catch (IOException | InterruptedException e) {
@@ -162,6 +168,7 @@ public class BitbucketBuildStatusNotifications {
 
         @Override
         public void onCompleted(Run<?, ?> build, TaskListener listener) {
+            LOGGER.info("Run completed.");
             try {
                 sendNotifications(build, listener);
             } catch (IOException | InterruptedException e) {
